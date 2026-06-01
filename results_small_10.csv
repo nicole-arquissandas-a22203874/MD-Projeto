@@ -1,0 +1,12 @@
+size,friends,query,pg_time,neo4j_time,winner
+small,10,Q1a - lookup person by id,0.000519,0.437211,PostgreSQL
+small,10,Q1b - filter persons by age range,0.001241,0.037095,PostgreSQL
+small,10,Q1c - find persons in a city,0.000224,0.007111,PostgreSQL
+small,10,Q2a - friends of person (1 hop),0.000879,0.025572,PostgreSQL
+small,10,Q2b - friends of friends (2 hops),0.001733,0.055355,PostgreSQL
+small,10,Q2c - friends of friends of friends (3 hops),0.006888,0.06297,PostgreSQL
+small,10,Q2d - posts liked by friends,0.001469,0.037194,PostgreSQL
+small,10,Q3a - count persons per city,0.000959,0.055457,PostgreSQL
+small,10,Q3b - average likes per person,0.001612,0.02623,PostgreSQL
+small,10,Q3c - most connected persons (friend count),0.004042,0.043958,PostgreSQL
+small,10,Q3d - total comments per post (top 10),0.004003,0.027931,PostgreSQL
