@@ -28,7 +28,7 @@ PG_CONFIG = {
 
 NEO4J_URI      = "bolt://localhost:7687"
 NEO4J_USER     = "neo4j"
-NEO4J_PASSWORD = "Nicole2672"
+NEO4J_PASSWORD = "neoPass"
 
 RUNS = 5   # number of times each query is run , so the result will be the average 
 

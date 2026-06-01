@@ -1,0 +1,161 @@
+QUERY PLAN ANALYSIS — Large Dataset
+======================================================================
+
+======================================================================
+Query: Q1a - Lookup person by ID (large, 5 friends) — PostgreSQL wins 258x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 0.052 ms
+  Scan types     : Index Scan
+  Cache hits     : 105 pages
+  Disk reads     : 0 pages
+  Cache ratio    : 100.0%
+
+Full plan:
+Index Scan using persons_pkey on persons  (cost=0.29..8.31 rows=1 width=31) (actual time=0.013..0.014 rows=1 loops=1)
+  Index Cond: (id = 1)
+  Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=102
+Planning Time: 1.967 ms
+Execution Time: 0.052 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 7
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=5 | rows=1
+  NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1
+
+======================================================================
+Query: Q2d - Posts liked by friends (large, 5 friends) — Neo4j wins 115x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 4.237 ms
+  Scan types     : Index Scan
+  Cache hits     : 1772 pages
+  Disk reads     : 0 pages
+  Cache ratio    : 100.0%
+
+Full plan:
+HashAggregate  (cost=73.46..74.14 rows=68 width=95) (actual time=3.926..3.967 rows=113 loops=1)
+  Group Key: po.id, po.content
+  Batches: 1  Memory Usage: 48kB
+  Buffers: shared hit=496
+  ->  Nested Loop  (cost=1.56..73.12 rows=68 width=95) (actual time=0.631..3.685 rows=113 loops=1)
+        Buffers: shared hit=496
+        ->  Nested Loop  (cost=1.14..41.84 rows=68 width=4) (actual time=0.575..0.955 rows=113 loops=1)
+              Buffers: shared hit=44
+              ->  Nested Loop  (cost=0.71..8.95 rows=7 width=4) (actual time=0.490..0.518 rows=12 loops=1)
+                    Buffers: shared hit=7
+                    ->  Index Only Scan using friendships_pkey on friendships f  (cost=0.42..4.55 rows=7 width=8) (actual time=0.071..0.079 rows=12 loops=1)
+                          Index Cond: (person_id = 1)
+                          Heap Fetches: 0
+                          Buffers: shared hit=4
+                    ->  Materialize  (cost=0.29..4.31 rows=1 width=4) (actual time=0.034..0.035 rows=1 loops=12)
+                          Buffers: shared hit=3
+                          ->  Index Only Scan using persons_pkey on persons p  (cost=0.29..4.31 rows=1 width=4) (actual time=0.401..0.402 rows=1 loops=1)
+                                Index Cond: (id = 1)
+                                Heap Fetches: 0
+                                Buffers: shared hit=3
+              ->  Index Only Scan using likes_pkey on likes l  (cost=0.42..4.60 rows=10 width=8) (actual time=0.028..0.032 rows=9 loops=12)
+                    Index Cond: (person_id = f.friend_id)
+                    Heap Fetches: 0
+                    Buffers: shared hit=37
+        ->  Index Scan using posts_pkey on posts po  (cost=0.42..0.46 rows=1 width=95) (actual time=0.023..0.023 rows=1 loops=113)
+              Index Cond: (id = l.post_id)
+              Buffers: shared hit=452
+Planning:
+  Buffers: shared hit=230
+Planning Time: 11.969 ms
+Execution Time: 4.237 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 728
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=0 | rows=113
+  Distinct@neo4j | db_hits=0 | rows=113
+    CacheProperties@neo4j | db_hits=339 | rows=113
+      Filter@neo4j | db_hits=226 | rows=113
+        Expand(All)@neo4j | db_hits=125 | rows=113
+          Filter@neo4j | db_hits=24 | rows=12
+            Expand(All)@neo4j | db_hits=12 | rows=12
+              NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1
+
+======================================================================
+Query: Q2c - Friends of friends of friends (large, 20 friends) — PostgreSQL wins 393x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 1.251 ms
+  Scan types     : Index Scan
+  Cache hits     : 2737 pages
+  Disk reads     : 0 pages
+  Cache ratio    : 100.0%
+
+Full plan:
+HashAggregate  (cost=122.90..124.35 rows=145 width=16) (actual time=1.133..1.144 rows=83 loops=1)
+  Group Key: p4.id, p4.name
+  Batches: 1  Memory Usage: 40kB
+  Buffers: shared hit=530
+  ->  Nested Loop  (cost=2.44..122.18 rows=145 width=16) (actual time=0.115..1.102 rows=83 loops=1)
+        Join Filter: (p4.id <> p1.id)
+        Buffers: shared hit=530
+        ->  Index Only Scan using persons_pkey on persons p1  (cost=0.29..4.31 rows=1 width=4) (actual time=0.019..0.020 rows=1 loops=1)
+              Index Cond: (id = 1)
+              Heap Fetches: 0
+              Buffers: shared hit=3
+        ->  Nested Loop  (cost=2.15..116.05 rows=145 width=20) (actual time=0.094..1.068 rows=83 loops=1)
+              Buffers: shared hit=527
+              ->  Nested Loop  (cost=1.85..69.73 rows=145 width=8) (actual time=0.075..0.528 rows=83 loops=1)
+                    Buffers: shared hit=278
+                    ->  Nested Loop  (cost=1.43..49.59 rows=32 width=12) (actual time=0.064..0.305 rows=42 loops=1)
+                          Buffers: shared hit=151
+                          ->  Nested Loop  (cost=1.14..39.60 rows=32 width=8) (actual time=0.039..0.142 rows=42 loops=1)
+                                Join Filter: (f1.friend_id = f2.person_id)
+                                Buffers: shared hit=66
+                                ->  Nested Loop  (cost=0.71..34.72 rows=7 width=12) (actual time=0.027..0.061 rows=12 loops=1)
+                                      Buffers: shared hit=29
+                                      ->  Index Only Scan using friendships_pkey on friendships f1  (cost=0.42..4.55 rows=7 width=8) (actual time=0.013..0.014 rows=12 loops=1)
+                                            Index Cond: (person_id = 1)
+                                            Heap Fetches: 0
+                                            Buffers: shared hit=4
+                                      ->  Index Only Scan using persons_pkey on persons p2  (cost=0.29..4.31 rows=1 width=4) (actual time=0.003..0.004 rows=1 loops=12)
+                                            Index Cond: (id = f1.friend_id)
+                                            Heap Fetches: 0
+                                            Buffers: shared hit=25
+                                ->  Index Only Scan using friendships_pkey on friendships f2  (cost=0.42..0.61 rows=7 width=8) (actual time=0.006..0.006 rows=4 loops=12)
+                                      Index Cond: (person_id = p2.id)
+                                      Heap Fetches: 0
+                                      Buffers: shared hit=37
+                          ->  Index Only Scan using persons_pkey on persons p3  (cost=0.29..0.31 rows=1 width=4) (actual time=0.004..0.004 rows=1 loops=42)
+                                Index Cond: (id = f2.friend_id)
+                                Heap Fetches: 0
+                                Buffers: shared hit=85
+                    ->  Index Only Scan using friendships_pkey on friendships f3  (cost=0.42..0.56 rows=7 width=8) (actual time=0.005..0.005 rows=2 loops=42)
+                          Index Cond: (person_id = f2.friend_id)
+                          Heap Fetches: 0
+                          Buffers: shared hit=127
+              ->  Index Scan using persons_pkey on persons p4  (cost=0.29..0.32 rows=1 width=16) (actual time=0.006..0.006 rows=1 loops=83)
+                    Index Cond: (id = f3.friend_id)
+                    Buffers: shared hit=249
+Planning:
+  Buffers: shared hit=96
+Planning Time: 6.593 ms
+Execution Time: 1.251 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 7738
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=0 | rows=1053
+  Distinct@neo4j | db_hits=2106 | rows=1053
+    Filter@neo4j | db_hits=4212 | rows=1053
+      VarLengthExpand(Pruning)@neo4j | db_hits=1418 | rows=1053
+        NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1

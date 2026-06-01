@@ -1,0 +1,193 @@
+QUERY PLAN ANALYSIS — Large Dataset
+======================================================================
+
+======================================================================
+Query: Q1a - Lookup person by ID (large, 5 friends) — PostgreSQL wins 258x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 0.052 ms
+  Scan types     : Index Scan
+  Cache hits     : 101 pages
+  Disk reads     : 4 pages
+  Cache ratio    : 96.2%
+
+Full plan:
+Index Scan using persons_pkey on persons  (cost=0.29..8.31 rows=1 width=31) (actual time=0.014..0.014 rows=1 loops=1)
+  Index Cond: (id = 1)
+  Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=98 read=4
+Planning Time: 2.636 ms
+Execution Time: 0.052 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 7
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=5 | rows=1
+  NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1
+
+======================================================================
+Query: Q2d - Posts liked by friends (large, 5 friends) — Neo4j wins 115x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 1355.812 ms
+  Scan types     : Index Scan
+  Cache hits     : 10639841 pages
+  Disk reads     : 7311 pages
+  Cache ratio    : 99.9%
+
+Full plan:
+Unique  (cost=1071.59..1231432.57 rows=249738 width=95) (actual time=57.270..1354.285 rows=369 loops=1)
+  Buffers: shared hit=2654036 read=1468
+  ->  Nested Loop  (cost=1071.59..1016231.95 rows=43040123 width=95) (actual time=57.269..1354.077 rows=369 loops=1)
+        Buffers: shared hit=2654036 read=1468
+        ->  Nested Loop  (cost=1071.30..478226.10 rows=43040123 width=99) (actual time=57.178..1353.804 rows=369 loops=1)
+              Buffers: shared hit=2654033 read=1468
+              ->  Merge Join  (cost=1070.87..91337.12 rows=881067 width=99) (actual time=55.683..390.164 rows=881067 loops=1)
+                    Merge Cond: (po.id = l.post_id)
+                    Buffers: shared hit=10498 read=1433
+                    ->  Gather Merge  (cost=1070.44..45131.01 rows=249738 width=95) (actual time=55.597..111.586 rows=249738 loops=1)
+                          Workers Planned: 2
+                          Workers Launched: 2
+                          Buffers: shared hit=6599
+                          ->  Incremental Sort  (cost=70.42..15305.02 rows=104058 width=95) (actual time=0.124..30.419 rows=83246 loops=3)
+                                Sort Key: po.id, po.content
+                                Presorted Key: po.id
+                                Full-sort Groups: 1567  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                Buffers: shared hit=6599
+                                Worker 0:  Full-sort Groups: 3111  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                Worker 1:  Full-sort Groups: 3127  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                                ->  Parallel Index Scan using posts_pkey on posts po  (cost=0.42..9305.63 rows=104058 width=95) (actual time=0.016..17.619 rows=83246 loops=3)
+                                      Buffers: shared hit=6421
+                    ->  Index Scan using idx_likes_post on likes l  (cost=0.42..34568.43 rows=881067 width=8) (actual time=0.082..124.345 rows=881067 loops=1)
+                          Buffers: shared hit=3899 read=1433
+              ->  Index Only Scan using friendships_pkey on friendships f  (cost=0.43..1.00 rows=49 width=8) (actual time=0.001..0.001 rows=0 loops=881067)
+                    Index Cond: ((person_id = 1) AND (friend_id = l.person_id))
+                    Heap Fetches: 369
+                    Buffers: shared hit=2643535 read=35
+        ->  Materialize  (cost=0.29..4.31 rows=1 width=4) (actual time=0.000..0.000 rows=1 loops=369)
+              Buffers: shared hit=3
+              ->  Index Only Scan using persons_pkey on persons p  (cost=0.29..4.31 rows=1 width=4) (actual time=0.082..0.083 rows=1 loops=1)
+                    Index Cond: (id = 1)
+                    Heap Fetches: 0
+                    Buffers: shared hit=3
+Planning:
+  Buffers: shared hit=179 read=6 dirtied=1
+Planning Time: 4.452 ms
+Execution Time: 1355.812 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 728
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=0 | rows=113
+  Distinct@neo4j | db_hits=0 | rows=113
+    CacheProperties@neo4j | db_hits=339 | rows=113
+      Filter@neo4j | db_hits=226 | rows=113
+        Expand(All)@neo4j | db_hits=125 | rows=113
+          Filter@neo4j | db_hits=24 | rows=12
+            Expand(All)@neo4j | db_hits=12 | rows=12
+              NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1
+
+======================================================================
+Query: Q2c - Friends of friends of friends (large, 20 friends) — PostgreSQL wins 393x
+======================================================================
+
+--- PostgreSQL EXPLAIN ANALYZE ---
+  Execution time : Execution Time: 2796.793 ms
+  Scan types     : Index Scan, Seq Scan
+  Cache hits     : 47229 pages
+  Disk reads     : 157871 pages
+  Cache ratio    : 23.0%
+
+Full plan:
+HashAggregate  (cost=130125.07..131125.07 rows=100000 width=16) (actual time=2547.306..2791.217 rows=9767 loops=1)
+  Group Key: p4.id, p4.name
+  Batches: 1  Memory Usage: 2065kB
+  Buffers: shared hit=5482 read=14857 written=7, temp read=11598 written=12008
+  ->  Gather  (cost=108125.07..129125.07 rows=200000 width=16) (actual time=2533.814..2781.593 rows=10443 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=5482 read=14857 written=7, temp read=11598 written=12008
+        ->  HashAggregate  (cost=107125.07..108125.07 rows=100000 width=16) (actual time=2471.890..2473.022 rows=3481 loops=3)
+              Group Key: p4.id, p4.name
+              Batches: 1  Memory Usage: 1809kB
+              Buffers: shared hit=5482 read=14857 written=7, temp read=11598 written=12008
+              Worker 0:  Batches: 1  Memory Usage: 1809kB
+              Worker 1:  Batches: 1  Memory Usage: 1809kB
+              ->  Parallel Hash Join  (cost=64631.77..99353.60 rows=1554293 width=16) (actual time=1071.339..2469.353 rows=3606 loops=3)
+                    Hash Cond: (f2.friend_id = p3.id)
+                    Buffers: shared hit=5482 read=14857 written=7, temp read=11598 written=12008
+                    ->  Parallel Hash Join  (cost=11921.92..32985.20 rows=79545 width=8) (actual time=9.618..262.025 rows=267 loops=3)
+                          Hash Cond: (p2.id = f1.friend_id)
+                          Buffers: shared hit=1592 read=7377 written=1
+                          ->  Parallel Hash Join  (cost=2541.80..21467.79 rows=814170 width=12) (actual time=6.862..203.834 rows=651336 loops=3)
+                                Hash Cond: (f2.person_id = p2.id)
+                                Buffers: shared hit=1548 read=7377 written=1
+                                ->  Parallel Seq Scan on friendships f2  (cost=0.00..16788.70 rows=814170 width=8) (actual time=0.045..53.870 rows=651336 loops=3)
+                                      Buffers: shared hit=1270 read=7377 written=1
+                                ->  Parallel Hash  (cost=2020.96..2020.96 rows=41667 width=4) (actual time=6.772..6.774 rows=33333 loops=3)
+                                      Buckets: 131072  Batches: 1  Memory Usage: 4992kB
+                                      Buffers: shared hit=278
+                                      ->  Parallel Index Only Scan using persons_pkey on persons p2  (cost=0.29..2020.96 rows=41667 width=4) (actual time=0.022..2.570 rows=33333 loops=3)
+                                            Heap Fetches: 0
+                                            Buffers: shared hit=278
+                          ->  Parallel Hash  (cost=9329.24..9329.24 rows=4071 width=8) (actual time=0.090..0.091 rows=13 loops=3)
+                                Buckets: 16384  Batches: 1  Memory Usage: 192kB
+                                Buffers: shared hit=44
+                                ->  Parallel Bitmap Heap Scan on friendships f1  (cost=220.14..9329.24 rows=4071 width=8) (actual time=0.030..0.055 rows=13 loops=3)
+                                      Recheck Cond: (person_id = 1)
+                                      Buffers: shared hit=44
+                                      ->  Bitmap Index Scan on friendships_pkey  (cost=0.00..217.70 rows=9770 width=0) (actual time=0.031..0.032 rows=40 loops=1)
+                                            Index Cond: (person_id = 1)
+                                            Buffers: shared hit=4
+                    ->  Parallel Hash  (cost=36966.82..36966.82 rows=814162 width=28) (actual time=712.812..712.818 rows=651336 loops=3)
+                          Buckets: 131072  Batches: 32  Memory Usage: 4960kB
+                          Buffers: shared hit=3854 read=7480 written=6, temp written=11644
+                          ->  Parallel Hash Join  (cost=6846.09..36966.82 rows=814162 width=28) (actual time=56.343..533.024 rows=651336 loops=3)
+                                Hash Cond: (f3.person_id = p3.id)
+                                Buffers: shared hit=3854 read=7480 written=6
+                                ->  Hash Join  (cost=4304.30..32287.76 rows=814162 width=24) (actual time=38.590..341.201 rows=651336 loops=3)
+                                      Hash Cond: (f3.friend_id = p4.id)
+                                      Buffers: shared hit=3578 read=7480 written=6
+                                      ->  Parallel Seq Scan on friendships f3  (cost=0.00..16788.70 rows=814170 width=8) (actual time=0.049..62.131 rows=651336 loops=3)
+                                            Buffers: shared hit=1167 read=7480 written=6
+                                      ->  Hash  (cost=3054.31..3054.31 rows=99999 width=20) (actual time=38.283..38.285 rows=99999 loops=3)
+                                            Buckets: 131072  Batches: 1  Memory Usage: 6130kB
+                                            Buffers: shared hit=2411
+                                            ->  Nested Loop  (cost=0.29..3054.31 rows=99999 width=20) (actual time=0.329..21.654 rows=99999 loops=3)
+                                                  Join Filter: (p4.id <> p1.id)
+                                                  Rows Removed by Join Filter: 1
+                                                  Buffers: shared hit=2411
+                                                  ->  Index Only Scan using persons_pkey on persons p1  (cost=0.29..4.31 rows=1 width=4) (actual time=0.088..0.091 rows=1 loops=3)
+                                                        Index Cond: (id = 1)
+                                                        Heap Fetches: 0
+                                                        Buffers: shared hit=11
+                                                  ->  Seq Scan on persons p4  (cost=0.00..1800.00 rows=100000 width=16) (actual time=0.237..7.244 rows=100000 loops=3)
+                                                        Buffers: shared hit=2400
+                                ->  Parallel Hash  (cost=2020.96..2020.96 rows=41667 width=4) (actual time=17.625..17.626 rows=33333 loops=3)
+                                      Buckets: 131072  Batches: 1  Memory Usage: 4960kB
+                                      Buffers: shared hit=276
+                                      ->  Parallel Index Only Scan using persons_pkey on persons p3  (cost=0.29..2020.96 rows=41667 width=4) (actual time=0.016..19.201 rows=100000 loops=1)
+                                            Heap Fetches: 0
+                                            Buffers: shared hit=276
+Planning:
+  Buffers: shared hit=5
+Planning Time: 8.059 ms
+Execution Time: 2796.793 ms
+
+--- Neo4j PROFILE ---
+  Total DbHits   : 7738
+  (DbHits = number of graph records the engine touched)
+
+Execution plan:
+ProduceResults@neo4j | db_hits=0 | rows=1053
+  Distinct@neo4j | db_hits=2106 | rows=1053
+    Filter@neo4j | db_hits=4212 | rows=1053
+      VarLengthExpand(Pruning)@neo4j | db_hits=1418 | rows=1053
+        NodeUniqueIndexSeek@neo4j | db_hits=2 | rows=1
